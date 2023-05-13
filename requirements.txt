@@ -1,2 +1,5 @@
 djangorestframework>=3.14.0,<3.15
 flake8>=6.0.0,<7
+psycopg2>=2.9.6,<2.10
+django-environ>=0.10.0,<0.11
+drf-spectacular>=0.26.2,<0.27
