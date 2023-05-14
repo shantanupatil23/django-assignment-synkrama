@@ -2,7 +2,8 @@
 Tests for post APIs.
 """
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from rest_framework import status
@@ -10,7 +11,6 @@ from rest_framework.test import APIClient
 
 from post.models import Post
 from post.serializers import PostSerializer
-
 
 POSTS_URL = reverse('post:post-list')
 
@@ -169,3 +169,20 @@ class PrivatePostApiTests(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
         self.assertTrue(Post.objects.filter(id=post.id).exists())
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')  # noqa:E501
+    def test_create_post_sends_email_notification(self):
+        payload = {
+            'author': self.user,
+            'title': 'Sample post title',
+            'body': 'Sample post body',
+        }
+        self.client.post(POSTS_URL, payload)
+
+        email_subject = 'New post created'
+        email_message=f'Hi Django User {payload["author"]},\n\n'
+        email_message+=f'Your post "{payload["title"]}" has been created successfully.'
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, email_subject)
+        self.assertEqual(mail.outbox[0].to, [self.user.email])
+        self.assertEqual(mail.outbox[0].body, email_message)
