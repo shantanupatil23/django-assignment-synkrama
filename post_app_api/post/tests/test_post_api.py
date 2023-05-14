@@ -11,6 +11,7 @@ from rest_framework.test import APIClient
 
 from post.models import Post
 from post.serializers import PostSerializer
+from post.views import CustomPagination
 
 POSTS_URL = reverse('post:post-list')
 
@@ -55,7 +56,7 @@ class PrivatePostApiTests(TestCase):
         posts = Post.objects.all().order_by('-id')
         serializer = PostSerializer(posts, many=True)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data, serializer.data)
+        self.assertEqual(res.data['results'], serializer.data)
 
     def test_post_list_limited_to_user(self):
         """Test list of posts is limited to authenticated user."""
@@ -68,7 +69,7 @@ class PrivatePostApiTests(TestCase):
         posts = Post.objects.filter(author=self.user)
         serializer = PostSerializer(posts, many=True)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(res.data, serializer.data)
+        self.assertEqual(res.data['results'], serializer.data)
 
     def test_get_post_detail(self):
         """Test get post detail."""
@@ -180,9 +181,55 @@ class PrivatePostApiTests(TestCase):
         self.client.post(POSTS_URL, payload)
 
         email_subject = 'New post created'
-        email_message=f'Hi Django User {payload["author"]},\n\n'
-        email_message+=f'Your post "{payload["title"]}" has been created successfully.'
+        email_message = (f"Hi Django User {payload['author']},"
+                         f"\n\nYour post \"{payload['title']}\""
+                         " has been created successfully.")
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].subject, email_subject)
         self.assertEqual(mail.outbox[0].to, [self.user.email])
         self.assertEqual(mail.outbox[0].body, email_message)
+
+    def test_retrieve_paginated_posts(self):
+        """Test retrieving a list of paginated posts."""
+        number_of_posts = 27
+        page_size = CustomPagination.page_size
+        for _ in range(number_of_posts):
+            create_post(author=self.user)
+
+        posts = Post.objects.all().order_by('-id')
+        serializer = PostSerializer(posts, many=True)
+
+        page_number = 0
+        for start_index in range(0,number_of_posts, page_size):
+            page_number += 1
+            res = self.client.get(POSTS_URL, {'page': page_number})
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            self.assertEqual(res.data['results'], serializer.data[start_index:start_index+page_size])
+
+    def test_filter_by_title(self):
+        """Test filtering posts by title."""
+        search_title = 'A catchy title'
+        create_post(author=self.user, title=search_title)
+        create_post(author=self.user, title='A boring title')
+
+        res = self.client.get(POSTS_URL, {'title': search_title})
+
+        posts = Post.objects.filter(title=search_title).order_by('-id')
+        serializer = PostSerializer(posts, many=True)
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['results'], serializer.data)
+
+    def test_filter_by_body(self):
+        """Test filtering posts by body."""
+        search_body = 'A catchy body'
+        create_post(author=self.user, body=search_body)
+        create_post(author=self.user, body='A boring body')
+
+        res = self.client.get(POSTS_URL, {'body': search_body})
+
+        posts = Post.objects.filter(body=search_body).order_by('-id')
+        serializer = PostSerializer(posts, many=True)
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['results'], serializer.data)
